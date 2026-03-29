@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>기간제 계약기간 계산기</title>
-    <!-- 외부 라이브러리 로드 (React, Babel, Tailwind, Lucide) -->
+    <!-- 외부 라이브러리 로드 -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,6 +13,7 @@
     <style>
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
         body { font-family: 'Pretendard', sans-serif; background-color: #f8fafc; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
     </style>
 </head>
 <body>
@@ -33,7 +34,7 @@
             { date: "12-25", name: "성탄절", hasAlt: true }
         ];
 
-        // 2050년까지의 음력 공휴일 (설날, 부처님오신날, 추석)
+        // 2050년까지의 음력 공휴일 데이터
         const LUNAR_DATA = {
             2024: { seollal: ["02-09", "02-10", "02-11"], buddha: "05-15", chuseok: ["09-16", "09-17", "09-18"] },
             2025: { seollal: ["01-28", "01-29", "01-30"], buddha: "05-05", chuseok: ["10-05", "10-06", "10-07"] },
@@ -64,24 +65,47 @@
             2050: { seollal: ["01-22", "01-23", "01-24"], buddha: "05-28", chuseok: ["09-29", "09-30", "10-01"] },
         };
 
-        const App = () => {
-            const [hireDate, setHireDate] = useState({ 
-                year: new Date().getFullYear(), 
-                month: new Date().getMonth() + 1, 
-                day: new Date().getDate() 
-            });
-            const [duration, setDuration] = useState({ years: 0, months: 6 });
-            const [result, setResult] = useState({ 
-                originalEnd: null, adjustedEnd: null, isAdjusted: false, 
-                reason: "", isOverTwoYears: false, adjustmentHistory: [] 
-            });
+        const MiniCalendar = ({ targetDate, title, colorClass }) => {
+            if (!targetDate) return null;
+            const days = [];
+            const startOfWeek = new Date(targetDate);
+            startOfWeek.setDate(targetDate.getDate() - targetDate.getDay());
 
-            useEffect(() => {
-                // UI 렌더링 후 아이콘 활성화
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-            });
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(startOfWeek);
+                d.setDate(startOfWeek.getDate() + i);
+                days.push({
+                    day: d.getDate(),
+                    isTarget: d.toDateString() === targetDate.toDateString(),
+                    dayIdx: i
+                });
+            }
+
+            return (
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest">{title}</p>
+                    <div className="calendar-grid text-center mb-1">
+                        {['일','월','화','수','목','금','토'].map((d, i) => (
+                            <span key={d} className={`text-[10px] font-bold ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-300'}`}>{d}</span>
+                        ))}
+                    </div>
+                    <div className="calendar-grid text-center">
+                        {days.map((d, i) => (
+                            <div key={i} className={`h-8 flex items-center justify-center text-xs rounded-lg transition-all ${d.isTarget ? `${colorClass} font-bold scale-110 shadow-sm` : 'text-slate-500'}`}>
+                                {d.day}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [hireDate, setHireDate] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: new Date().getDate() });
+            const [duration, setDuration] = useState({ years: 0, months: 6 });
+            const [result, setResult] = useState({ originalEnd: null, adjustedEnd: null, isAdjusted: false, reason: "", adjustmentHistory: [] });
+
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); });
 
             const getFullHolidays = (year) => {
                 const holidays = new Map();
@@ -102,13 +126,10 @@
                     let shouldHaveAlt = false;
                     if (isFixedAltTarget || isLunarAltTarget) { if (day === 0 || day === 6) shouldHaveAlt = true; }
                     else if (isBigLunarAltTarget) { if (day === 0) shouldHaveAlt = true; }
-                    
                     if (shouldHaveAlt) {
                         let nextDay = new Date(date);
                         nextDay.setDate(nextDay.getDate() + 1);
-                        while (holidays.has(`${year}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`) || nextDay.getDay() === 0 || nextDay.getDay() === 6) {
-                            nextDay.setDate(nextDay.getDate() + 1);
-                        }
+                        while (holidays.has(`${year}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`) || nextDay.getDay() === 0 || nextDay.getDay() === 6) { nextDay.setDate(nextDay.getDate() + 1); }
                         altHolidays.set(`${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`, `대체공휴일(${name})`);
                     }
                 });
@@ -118,7 +139,6 @@
             const calculateDates = () => {
                 const { year, month, day } = hireDate;
                 const { years, months } = duration;
-                if (!year || !month || !day) return;
                 let target = new Date(year, month - 1, day);
                 target.setFullYear(target.getFullYear() + parseInt(years));
                 target.setMonth(target.getMonth() + parseInt(months));
@@ -140,12 +160,7 @@
                     current.setDate(current.getDate() - 1);
                     safety++;
                 }
-                setResult({ 
-                    originalEnd, adjustedEnd: current, isAdjusted, 
-                    reason: isAdjusted ? "휴무일로 인해 조정되었습니다." : "조정 없이 확정되었습니다.", 
-                    isOverTwoYears: (parseInt(years) * 12 + parseInt(months)) > 24, 
-                    adjustmentHistory 
-                });
+                setResult({ originalEnd, adjustedEnd: current, isAdjusted, reason: isAdjusted ? "휴무일로 인해 조정되었습니다." : "조정 없이 확정되었습니다.", isOverTwoYears: (parseInt(years) * 12 + parseInt(months)) > 24, adjustmentHistory });
             };
 
             useEffect(() => { calculateDates(); }, [hireDate, duration]);
@@ -159,7 +174,7 @@
                         </div>
                         <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl flex gap-3 items-start">
                             <i data-lucide="settings" className="text-blue-600 w-4 h-4 mt-1"></i>
-                            <p className="text-xs text-blue-800 leading-relaxed">
+                            <p className="text-xs text-blue-700 leading-relaxed">
                                 <b>※ 안내:</b> 2050년까지 공휴일 로직이 탑재되어 있습니다. 신규 공휴일 발생 시 코드 내 <b>FIXED_HOLIDAYS</b> 리스트를 수정하십시오.
                             </p>
                         </div>
@@ -193,6 +208,12 @@
                                     </div>
                                 </div>
                             </div>
+                            {result.isOverTwoYears && (
+                                <div className="bg-amber-50 border border-amber-100 p-5 rounded-3xl flex gap-3 shadow-sm">
+                                    <i data-lucide="alert-triangle" className="text-amber-500 shrink-0 w-5 h-5"></i>
+                                    <p className="text-[11px] text-amber-800 leading-relaxed font-medium"><b>기간제법 경고:</b> 2년 초과 시 무기계약직 전환 리스크가 있습니다.</p>
+                                </div>
+                            )}
                         </div>
 
                         <div className="lg:col-span-8 space-y-8">
@@ -210,27 +231,40 @@
                                 </div>
                             </div>
 
-                            <div className="grid md:grid-cols-2 gap-6">
-                                <div className="bg-white p-6 rounded-3xl border border-slate-100">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-2">원 법정 만료일</p>
-                                    <p className="text-2xl font-black text-slate-200">{result.originalEnd?.toLocaleDateString()}</p>
-                                </div>
-                                <div className="bg-white p-6 rounded-3xl border border-slate-100">
-                                    <p className="text-[10px] font-black text-blue-500 uppercase mb-2">실무 종료 예정일</p>
-                                    <p className="text-2xl font-black text-blue-600">{result.adjustedEnd?.toLocaleDateString()}</p>
-                                </div>
+                            {/* 시각화 달력 비교 섹션 */}
+                            <div className="flex flex-col md:flex-row gap-6">
+                                <MiniCalendar 
+                                    targetDate={result.originalEnd} 
+                                    title="원 법정 만료일 (Week)" 
+                                    colorClass="bg-slate-100 text-slate-800"
+                                />
+                                {result.isAdjusted && (
+                                    <div className="hidden md:flex items-center justify-center">
+                                        <i data-lucide="chevron-right" className="text-slate-300 w-6 h-6"></i>
+                                    </div>
+                                )}
+                                {result.isAdjusted && (
+                                    <MiniCalendar 
+                                        targetDate={result.adjustedEnd} 
+                                        title="조정 후 실무 종료일 (Week)" 
+                                        colorClass="bg-blue-600 text-white"
+                                    />
+                                )}
                             </div>
 
-                            <div className="bg-indigo-50 rounded-[2rem] p-8 border border-indigo-100 shadow-sm">
-                                <h3 className="font-bold text-indigo-900 flex items-center gap-2 mb-4">
+                            <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
                                     <i data-lucide="book-open" className="w-5 h-5"></i> 인사 실무 참고
                                 </h3>
-                                <div className="grid md:grid-cols-2 gap-6 text-[11px] text-indigo-800 font-medium leading-relaxed">
-                                    <p>종료일이 휴일일 경우 직전 근무일로 역산하여 퇴사 처리를 진행함으로써 행정적 공백을 예방합니다.</p>
-                                    <div className="flex flex-col gap-2">
-                                        <p>사용기간 2년 초과 시 무기계약직 간주(기간제법 제4조)를 주의하십시오.</p>
-                                        <a href="https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=228186" target="_blank" className="text-indigo-600 font-black hover:underline flex items-center gap-1">
-                                            기간제법 전문 링크 <i data-lucide="external-link" className="w-3 h-3"></i>
+                                <div className="grid md:grid-cols-2 gap-8 text-[11px] text-slate-500 leading-relaxed font-medium">
+                                    <div className="space-y-4">
+                                        <p><span className="font-bold text-slate-800 border-b-2 border-blue-100">조정 로직:</span> 주말 또는 공휴일이 종료일인 경우, 직전 평일을 마지막 근로일로 지정하여 주휴수당 분쟁을 방지합니다.</p>
+                                        <p><span className="font-bold text-slate-800 border-b-2 border-blue-100">2050년 대응:</span> 본 도구는 장기 사용을 위해 미래 공휴일 데이터를 내장하고 있습니다.</p>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <p><span className="font-bold text-slate-800 border-b-2 border-blue-100">기간제법:</span> 사용기간 2년을 넘기지 않도록 관리하는 것이 중요합니다.</p>
+                                        <a href="https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=228186" target="_blank" className="inline-flex items-center gap-2 text-blue-600 font-black hover:underline mt-2">
+                                            기간제법 법령 전문 다이렉트 링크 <i data-lucide="external-link" className="w-3 h-3"></i>
                                         </a>
                                     </div>
                                 </div>
