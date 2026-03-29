@@ -1,304 +1,226 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Calendar as CalendarIcon, 
-  AlertTriangle, 
-  BookOpen, 
-  Info, 
-  ExternalLink, 
-  Calculator, 
-  CheckCircle2, 
-  Clock,
-  Settings
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>기간제 계약기간 계산기</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8fafc; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-/**
- * [유지보수 가이드]
- * 새로운 법정 공휴일(국가 지정 임시 공휴일 등)이 신설될 경우, 
- * 아래 FIXED_HOLIDAYS 리스트에 { date: "MM-DD", name: "공휴일명", hasAlt: true/false } 
- * 형식으로 추가하면 즉시 계산 로직에 반영됩니다.
- */
-const FIXED_HOLIDAYS = [
-  { date: "01-01", name: "신정", hasAlt: false },
-  { date: "03-01", name: "삼일절", hasAlt: true },
-  { date: "05-05", name: "어린이날", hasAlt: true },
-  { date: "06-06", name: "현충일", hasAlt: false },
-  { date: "08-15", name: "광복절", hasAlt: true },
-  { date: "10-03", name: "개천절", hasAlt: true },
-  { date: "10-09", name: "한글날", hasAlt: true },
-  { date: "12-25", name: "성탄절", hasAlt: true }
-];
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
 
-// 2050년까지의 음력 공휴일 데이터베이스 (설날, 부처님오신날, 추석)
-const LUNAR_HOLIDAYS_DATA = {
-  2024: { seollal: ["02-09", "02-10", "02-11"], buddha: "05-15", chuseok: ["09-16", "09-17", "09-18"] },
-  2025: { seollal: ["01-28", "01-29", "01-30"], buddha: "05-05", chuseok: ["10-05", "10-06", "10-07"] },
-  2026: { seollal: ["02-16", "02-17", "02-18"], buddha: "05-24", chuseok: ["09-24", "09-25", "09-26"] },
-  2027: { seollal: ["02-06", "02-07", "02-08"], buddha: "05-13", chuseok: ["09-14", "09-15", "09-16"] },
-  2028: { seollal: ["01-26", "01-27", "01-28"], buddha: "05-02", chuseok: ["10-02", "10-03", "10-04"] },
-  2029: { seollal: ["02-12", "02-13", "02-14"], buddha: "05-20", chuseok: ["09-21", "09-22", "09-23"] },
-  2030: { seollal: ["02-02", "02-03", "02-04"], buddha: "05-09", chuseok: ["09-11", "09-12", "09-13"] },
-  2031: { seollal: ["01-22", "01-23", "01-24"], buddha: "05-28", chuseok: ["09-30", "10-01", "10-02"] },
-  2032: { seollal: ["02-10", "02-11", "02-12"], buddha: "05-16", chuseok: ["09-18", "09-19", "09-20"] },
-  2033: { seollal: ["01-30", "01-31", "02-01"], buddha: "05-06", chuseok: ["10-07", "10-08", "10-09"] },
-  2034: { seollal: ["02-18", "02-19", "02-20"], buddha: "05-25", chuseok: ["09-26", "09-27", "09-28"] },
-  2035: { seollal: ["02-07", "02-08", "02-09"], buddha: "05-15", chuseok: ["09-15", "09-16", "09-17"] },
-  2036: { seollal: ["01-27", "01-28", "01-29"], buddha: "05-02", chuseok: ["10-04", "10-05", "10-06"] },
-  2037: { seollal: ["02-14", "02-15", "02-16"], buddha: "05-22", chuseok: ["09-23", "09-24", "09-25"] },
-  2038: { seollal: ["02-03", "02-04", "02-05"], buddha: "05-11", chuseok: ["09-12", "09-13", "09-14"] },
-  2039: { seollal: ["01-23", "01-24", "01-25"], buddha: "05-30", chuseok: ["10-01", "10-02", "10-03"] },
-  2040: { seollal: ["02-11", "02-12", "02-13"], buddha: "05-18", chuseok: ["09-20", "09-21", "09-22"] },
-  2041: { seollal: ["01-31", "02-01", "02-02"], buddha: "05-07", chuseok: ["10-09", "10-10", "10-11"] },
-  2042: { seollal: ["01-21", "01-22", "01-23"], buddha: "05-26", chuseok: ["09-27", "09-28", "09-29"] },
-  2043: { seollal: ["02-09", "02-10", "02-11"], buddha: "05-16", chuseok: ["09-16", "09-17", "09-18"] },
-  2044: { seollal: ["01-29", "01-30", "01-31"], buddha: "05-05", chuseok: ["10-04", "10-05", "10-06"] },
-  2045: { seollal: ["02-16", "02-17", "02-18"], buddha: "05-24", chuseok: ["09-25", "09-26", "09-27"] },
-  2046: { seollal: ["02-05", "02-06", "02-07"], buddha: "05-13", chuseok: ["09-14", "09-15", "09-16"] },
-  2047: { seollal: ["01-25", "01-26", "01-27"], buddha: "06-02", chuseok: ["10-03", "10-04", "10-05"] },
-  2048: { seollal: ["02-13", "02-14", "02-15"], buddha: "05-20", chuseok: ["09-21", "09-22", "09-23"] },
-  2049: { seollal: ["02-01", "02-02", "02-03"], buddha: "05-09", chuseok: ["09-10", "09-11", "09-12"] },
-  2050: { seollal: ["01-22", "01-23", "01-24"], buddha: "05-28", chuseok: ["09-29", "09-30", "10-01"] },
-};
+        // 아이콘 컴포넌트 (Lucide 사용을 위한 간단한 래퍼)
+        const Icon = ({ name, size = 20, className = "" }) => (
+            <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>
+        );
 
-const App = () => {
-  // 상태 관리
-  const [hireDate, setHireDate] = useState({
-    year: new Date().getFullYear(),
-    month: new Date().getMonth() + 1,
-    day: new Date().getDate(),
-  });
+        const FIXED_HOLIDAYS = [
+            { date: "01-01", name: "신정", hasAlt: false },
+            { date: "03-01", name: "삼일절", hasAlt: true },
+            { date: "05-05", name: "어린이날", hasAlt: true },
+            { date: "06-06", name: "현충일", hasAlt: false },
+            { date: "08-15", name: "광복절", hasAlt: true },
+            { date: "10-03", name: "개천절", hasAlt: true },
+            { date: "10-09", name: "한글날", hasAlt: true },
+            { date: "12-25", name: "성탄절", hasAlt: true }
+        ];
 
-  const [duration, setDuration] = useState({
-    years: 0,
-    months: 6, // 기본값 6개월
-  });
-  
-  const [result, setResult] = useState({
-    originalEnd: null,
-    adjustedEnd: null,
-    isAdjusted: false,
-    reason: "",
-    isOverTwoYears: false,
-    adjustmentHistory: []
-  });
+        const LUNAR_HOLIDAYS_DATA = {
+            2024: { seollal: ["02-09", "02-10", "02-11"], buddha: "05-15", chuseok: ["09-16", "09-17", "09-18"] },
+            2025: { seollal: ["01-28", "01-29", "01-30"], buddha: "05-05", chuseok: ["10-05", "10-06", "10-07"] },
+            2026: { seollal: ["02-16", "02-17", "02-18"], buddha: "05-24", chuseok: ["09-24", "09-25", "09-26"] },
+            2027: { seollal: ["02-06", "02-07", "02-08"], buddha: "05-13", chuseok: ["09-14", "09-15", "09-16"] },
+            2028: { seollal: ["01-26", "01-27", "01-28"], buddha: "05-02", chuseok: ["10-02", "10-03", "10-04"] },
+            2029: { seollal: ["02-12", "02-13", "02-14"], buddha: "05-20", chuseok: ["09-21", "09-22", "09-23"] },
+            2030: { seollal: ["02-02", "02-03", "02-04"], buddha: "05-09", chuseok: ["09-11", "09-12", "09-13"] },
+            2031: { seollal: ["01-22", "01-23", "01-24"], buddha: "05-28", chuseok: ["09-30", "10-01", "10-02"] },
+            2032: { seollal: ["02-10", "02-11", "02-12"], buddha: "05-16", chuseok: ["09-18", "09-19", "09-20"] },
+            2033: { seollal: ["01-30", "01-31", "02-01"], buddha: "05-06", chuseok: ["10-07", "10-08", "10-09"] },
+            2034: { seollal: ["02-18", "02-19", "02-20"], buddha: "05-25", chuseok: ["09-26", "09-27", "09-28"] },
+            2035: { seollal: ["02-07", "02-08", "02-09"], buddha: "05-15", chuseok: ["09-15", "09-16", "09-17"] },
+            2036: { seollal: ["01-27", "01-28", "01-29"], buddha: "05-02", chuseok: ["10-04", "10-05", "10-06"] },
+            2037: { seollal: ["02-14", "02-15", "02-16"], buddha: "05-22", chuseok: ["09-23", "09-24", "09-25"] },
+            2038: { seollal: ["02-03", "02-04", "02-05"], buddha: "05-11", chuseok: ["09-12", "09-13", "09-14"] },
+            2039: { seollal: ["01-23", "01-24", "01-25"], buddha: "05-30", chuseok: ["10-01", "10-02", "10-03"] },
+            2040: { seollal: ["02-11", "02-12", "02-13"], buddha: "05-18", chuseok: ["09-20", "09-21", "09-22"] },
+            2041: { seollal: ["01-31", "02-01", "02-02"], buddha: "05-07", chuseok: ["10-09", "10-10", "10-11"] },
+            2042: { seollal: ["01-21", "01-22", "01-23"], buddha: "05-26", chuseok: ["09-27", "09-28", "09-29"] },
+            2043: { seollal: ["02-09", "02-10", "02-11"], buddha: "05-16", chuseok: ["09-16", "09-17", "09-18"] },
+            2044: { seollal: ["01-29", "01-30", "01-31"], buddha: "05-05", chuseok: ["10-04", "10-05", "10-06"] },
+            2045: { seollal: ["02-16", "02-17", "02-18"], buddha: "05-24", chuseok: ["09-25", "09-26", "09-27"] },
+            2046: { seollal: ["02-05", "02-06", "02-07"], buddha: "05-13", chuseok: ["09-14", "09-15", "09-16"] },
+            2047: { seollal: ["01-25", "01-26", "01-27"], buddha: "06-02", chuseok: ["10-03", "10-04", "10-05"] },
+            2048: { seollal: ["02-13", "02-14", "02-15"], buddha: "05-20", chuseok: ["09-21", "09-22", "09-23"] },
+            2049: { seollal: ["02-01", "02-02", "02-03"], buddha: "05-09", chuseok: ["09-10", "09-11", "09-12"] },
+            2050: { seollal: ["01-22", "01-23", "01-24"], buddha: "05-28", chuseok: ["09-29", "09-30", "10-01"] },
+        };
 
-  // 공휴일 계산 엔진
-  const getFullHolidays = (year) => {
-    const holidays = new Map();
-    FIXED_HOLIDAYS.forEach(h => holidays.set(`${year}-${h.date}`, h.name));
-    const lunar = LUNAR_HOLIDAYS_DATA[year];
-    if (lunar) {
-      lunar.seollal.forEach(d => holidays.set(`${year}-${d}`, "설날 연휴"));
-      holidays.set(`${year}-${lunar.buddha}`, "부처님오신날");
-      lunar.chuseok.forEach(d => holidays.set(`${year}-${d}`, "추석 연휴"));
-    }
+        const App = () => {
+            const [hireDate, setHireDate] = useState({
+                year: new Date().getFullYear(),
+                month: new Date().getMonth() + 1,
+                day: new Date().getDate(),
+            });
+            const [duration, setDuration] = useState({ years: 0, months: 6 });
+            const [result, setResult] = useState({
+                originalEnd: null, adjustedEnd: null, isAdjusted: false, reason: "", isOverTwoYears: false, adjustmentHistory: []
+            });
 
-    const altHolidays = new Map();
-    holidays.forEach((name, dateStr) => {
-      const date = new Date(dateStr);
-      const day = date.getDay();
-      const isFixedAltTarget = FIXED_HOLIDAYS.find(fh => fh.name === name && fh.hasAlt);
-      const isLunarAltTarget = name === "부처님오신날" || name === "어린이날";
-      const isBigLunarAltTarget = name.includes("설날") || name.includes("추석");
+            // 아이콘 렌더링을 위해 DOM 업데이트 후 호출
+            useEffect(() => { lucide.createIcons(); }, [result, hireDate, duration]);
 
-      let shouldHaveAlt = false;
-      if (isFixedAltTarget || isLunarAltTarget) {
-        if (day === 0 || day === 6) shouldHaveAlt = true;
-      } else if (isBigLunarAltTarget) {
-        if (day === 0) shouldHaveAlt = true;
-      }
+            const getFullHolidays = (year) => {
+                const holidays = new Map();
+                FIXED_HOLIDAYS.forEach(h => holidays.set(`${year}-${h.date}`, h.name));
+                const lunar = LUNAR_HOLIDAYS_DATA[year];
+                if (lunar) {
+                    lunar.seollal.forEach(d => holidays.set(`${year}-${d}`, "설날 연휴"));
+                    holidays.set(`${year}-${lunar.buddha}`, "부처님오신날");
+                    lunar.chuseok.forEach(d => holidays.set(`${year}-${d}`, "추석 연휴"));
+                }
+                const altHolidays = new Map();
+                holidays.forEach((name, dateStr) => {
+                    const date = new Date(dateStr);
+                    const day = date.getDay();
+                    const isFixedAltTarget = FIXED_HOLIDAYS.find(fh => fh.name === name && fh.hasAlt);
+                    const isLunarAltTarget = name === "부처님오신날" || name === "어린이날";
+                    const isBigLunarAltTarget = name.includes("설날") || name.includes("추석");
+                    let shouldHaveAlt = false;
+                    if (isFixedAltTarget || isLunarAltTarget) { if (day === 0 || day === 6) shouldHaveAlt = true; }
+                    else if (isBigLunarAltTarget) { if (day === 0) shouldHaveAlt = true; }
 
-      if (shouldHaveAlt) {
-        let nextDay = new Date(date);
-        nextDay.setDate(nextDay.getDate() + 1);
-        while (holidays.has(`${year}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`) || nextDay.getDay() === 0 || nextDay.getDay() === 6) {
-          nextDay.setDate(nextDay.getDate() + 1);
-        }
-        altHolidays.set(`${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`, `대체공휴일(${name})`);
-      }
-    });
+                    if (shouldHaveAlt) {
+                        let nextDay = new Date(date);
+                        nextDay.setDate(nextDay.getDate() + 1);
+                        while (holidays.has(`${year}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`) || nextDay.getDay() === 0 || nextDay.getDay() === 6) {
+                            nextDay.setDate(nextDay.getDate() + 1);
+                        }
+                        altHolidays.set(`${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`, `대체공휴일(${name})`);
+                    }
+                });
+                return new Map([...holidays, ...altHolidays]);
+            };
 
-    return new Map([...holidays, ...altHolidays]);
-  };
+            const isHolidayOrWeekend = (date) => {
+                const y = date.getFullYear();
+                const dateStr = `${y}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                const day = date.getDay();
+                const yearHolidays = getFullHolidays(y);
+                if (day === 0) return { check: true, name: "일요일" };
+                if (day === 6) return { check: true, name: "토요일" };
+                if (yearHolidays.has(dateStr)) return { check: true, name: yearHolidays.get(dateStr) };
+                return { check: false, name: "" };
+            };
 
-  const isHolidayOrWeekend = (date) => {
-    const y = date.getFullYear();
-    const dateStr = `${y}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const day = date.getDay();
-    const yearHolidays = getFullHolidays(y);
-    if (day === 0) return { check: true, name: "일요일" };
-    if (day === 6) return { check: true, name: "토요일" };
-    if (yearHolidays.has(dateStr)) return { check: true, name: yearHolidays.get(dateStr) };
-    return { check: false, name: "" };
-  };
+            const calculateDates = () => {
+                const { year, month, day } = hireDate;
+                const { years, months } = duration;
+                if (!year || !month || !day) return;
+                let target = new Date(year, month - 1, day);
+                target.setFullYear(target.getFullYear() + parseInt(years));
+                target.setMonth(target.getMonth() + parseInt(months));
+                target.setDate(target.getDate() - 1);
+                const originalEnd = new Date(target);
+                let current = new Date(target);
+                let isAdjusted = false;
+                let adjustmentHistory = [];
+                let safety = 0;
+                while (safety < 21) {
+                    const status = isHolidayOrWeekend(current);
+                    if (!status.check) break;
+                    isAdjusted = true;
+                    adjustmentHistory.push({ date: new Date(current), reason: status.name });
+                    current.setDate(current.getDate() - 1);
+                    safety++;
+                }
+                setResult({
+                    originalEnd, adjustedEnd: current, isAdjusted,
+                    reason: isAdjusted ? "휴무일로 인해 조정되었습니다." : "조정 없이 확정되었습니다.",
+                    isOverTwoYears: (parseInt(years) * 12 + parseInt(months)) > 24,
+                    adjustmentHistory
+                });
+            };
 
-  const calculateDates = () => {
-    const { year, month, day } = hireDate;
-    const { years, months } = duration;
-    if (!year || !month || !day) return;
+            useEffect(() => { calculateDates(); }, [hireDate, duration]);
 
-    let target = new Date(year, month - 1, day);
-    target.setFullYear(target.getFullYear() + parseInt(years));
-    target.setMonth(target.getMonth() + parseInt(months));
-    target.setDate(target.getDate() - 1);
-    
-    const originalEnd = new Date(target);
-    let current = new Date(target);
-    let isAdjusted = false;
-    let adjustmentHistory = [];
-    let safety = 0;
+            return (
+                <div className="max-w-5xl mx-auto p-4 md:p-12">
+                    <header className="mb-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Icon name="calculator" size={32} className="text-blue-600" />
+                            <h1 className="text-3xl font-black text-slate-800">기간제 계약기간 계산기</h1>
+                        </div>
+                        <div className="bg-blue-50 border border-blue-100 px-4 py-3 rounded-xl flex items-start gap-2">
+                            <Icon name="settings" size={16} className="text-blue-600 mt-0.5" />
+                            <p className="text-xs text-blue-700">
+                                <b>※ 안내:</b> 2050년까지 공휴일 로직이 내장되어 있습니다. 신규 공휴일 발생 시 코드 내 <b>FIXED_HOLIDAYS</b> 리스트를 수정하세요.
+                            </p>
+                        </div>
+                    </header>
 
-    while (safety < 21) {
-      const status = isHolidayOrWeekend(current);
-      if (!status.check) break;
-      isAdjusted = true;
-      adjustmentHistory.push({ date: new Date(current), reason: status.name });
-      current.setDate(current.getDate() - 1);
-      safety++;
-    }
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        <div className="lg:col-span-4 space-y-6">
+                            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                                <h2 className="font-bold mb-4 flex items-center gap-2"><Icon name="calendar" size={18} className="text-blue-600" /> 정보 입력</h2>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <input type="number" value={hireDate.year} onChange={e => setHireDate({...hireDate, year: parseInt(e.target.value)})} className="p-2 bg-slate-50 rounded-lg text-center font-bold" />
+                                        <input type="number" value={hireDate.month} onChange={e => setHireDate({...hireDate, month: parseInt(e.target.value)})} className="p-2 bg-slate-50 rounded-lg text-center font-bold" />
+                                        <input type="number" value={hireDate.day} onChange={e => setHireDate({...hireDate, day: parseInt(e.target.value)})} className="p-2 bg-slate-50 rounded-lg text-center font-bold" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select value={duration.years} onChange={e => setDuration({...duration, years: parseInt(e.target.value)})} className="p-3 bg-blue-50 rounded-xl font-bold text-blue-700">
+                                            {[0,1,2,3,4,5].map(y => <option key={y} value={y}>{y}년</option>)}
+                                        </select>
+                                        <select value={duration.months} onChange={e => setDuration({...duration, months: parseInt(e.target.value)})} className="p-3 bg-blue-50 rounded-xl font-bold text-blue-700">
+                                            {[0,1,2,3,4,5,6,7,8,9,10,11].map(m => <option key={m} value={m}>{m}개월</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-    setResult({
-      originalEnd,
-      adjustedEnd: current,
-      isAdjusted,
-      reason: isAdjusted ? "휴무일을 피해 직전 소정근로일로 조정되었습니다." : "소정근로일에 해당하여 조정이 필요하지 않습니다.",
-      isOverTwoYears: (parseInt(years) * 12 + parseInt(months)) > 24,
-      adjustmentHistory
-    });
-  };
+                        <div className="lg:col-span-8 space-y-6">
+                            <div className="bg-slate-900 rounded-[2.5rem] p-8 md:p-10 shadow-xl text-white">
+                                <p className="text-blue-400 text-[10px] font-black uppercase mb-4 tracking-widest">Calculated Result</p>
+                                <div className="text-4xl md:text-6xl font-black mb-6">
+                                    {result.adjustedEnd?.getFullYear()}.{String(result.adjustedEnd?.getMonth()+1).padStart(2,'0')}.{String(result.adjustedEnd?.getDate()).padStart(2,'0')}
+                                    <span className="text-xl md:text-2xl text-slate-500 ml-4">({['일','월','화','수','목','금','토'][result.adjustedEnd?.getDay()]}요일)</span>
+                                </div>
+                                <div className="bg-white/5 p-4 rounded-xl flex items-center gap-3">
+                                    <Icon name="clock" size={18} className="text-blue-400" />
+                                    <span className="text-sm font-bold">{result.reason}</span>
+                                </div>
+                            </div>
 
-  useEffect(() => {
-    calculateDates();
-  }, [hireDate, duration]);
-
-  const weekDayLabel = (date) => ['일', '월', '화', '수', '목', '금', '토'][date?.getDay()];
-
-  return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-12 font-sans text-slate-900">
-      <div className="max-w-5xl mx-auto">
-        <header className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <Calculator className="text-blue-600" size={28} />
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">기간제 계약기간 계산기</h1>
-          </div>
-          
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl">
-            <Settings size={14} className="text-blue-600" />
-            <p className="text-xs text-blue-700 font-medium leading-relaxed">
-              <span className="font-bold mr-1">※ 유지보수 가이드:</span> 
-              공휴일 신설 시 코드 상단의 <code className="bg-white px-1 py-0.5 rounded border border-blue-200 font-mono text-blue-800">FIXED_HOLIDAYS</code> 리스트를 수정하십시오.
-            </p>
-          </div>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-4 space-y-6">
-            <section className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-              <h2 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <CalendarIcon size={18} className="text-blue-600" /> 정보 입력
-              </h2>
-              <div className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block tracking-wider">입사일</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <input type="number" value={hireDate.year} onChange={e => setHireDate({...hireDate, year: parseInt(e.target.value)||0})} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-center focus:ring-2 focus:ring-blue-500" />
-                    <input type="number" min="1" max="12" value={hireDate.month} onChange={e => setHireDate({...hireDate, month: parseInt(e.target.value)||0})} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-center" />
-                    <input type="number" min="1" max="31" value={hireDate.day} onChange={e => setHireDate({...hireDate, day: parseInt(e.target.value)||0})} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-center" />
-                  </div>
-                </div>
-                <div className="pt-6 border-t border-slate-50">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block tracking-wider">계약 기간</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <select value={duration.years} onChange={e => setDuration({...duration, years: parseInt(e.target.value)})} className="w-full p-4 bg-blue-50 border-none rounded-2xl font-bold text-blue-700">
-                      {[0,1,2,3,4,5].map(y => <option key={y} value={y}>{y}년</option>)}
-                    </select>
-                    <select value={duration.months} onChange={e => setDuration({...duration, months: parseInt(e.target.value)})} className="w-full p-4 bg-blue-50 border-none rounded-2xl font-bold text-blue-700">
-                      {[0,1,2,3,4,5,6,7,8,9,10,11].map(m => <option key={m} value={m}>{m}개월</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </section>
-            
-            {result.isOverTwoYears && (
-              <div className="bg-amber-50 border border-amber-100 p-5 rounded-3xl flex gap-3 shadow-sm">
-                <AlertTriangle className="text-amber-500 shrink-0" size={20} />
-                <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
-                  <strong>기간제법 경고:</strong> 2년 초과 시 무기계약직 전환 리스크가 있습니다.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="lg:col-span-8 space-y-6">
-            <section className="bg-slate-900 rounded-[2.5rem] p-10 shadow-2xl text-white relative overflow-hidden">
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 text-blue-400 mb-6 font-black text-[10px] uppercase tracking-[0.2em]">
-                  <CheckCircle2 size={14} /> Result
-                </div>
-                <div className="text-5xl md:text-6xl font-black tracking-tighter mb-10 flex flex-wrap items-baseline gap-4">
-                  {result.adjustedEnd?.getFullYear()}.{String(result.adjustedEnd?.getMonth() + 1).padStart(2, '0')}.{String(result.adjustedEnd?.getDate()).padStart(2, '0')}
-                  <span className="text-2xl text-slate-500 font-bold">({weekDayLabel(result.adjustedEnd)}요일)</span>
-                </div>
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1 p-5 bg-white/5 rounded-2xl border border-white/10">
-                    <p className="text-[10px] font-black text-slate-500 uppercase mb-2">상태</p>
-                    <p className="text-sm font-bold leading-relaxed">{result.reason}</p>
-                  </div>
-                  {result.isAdjusted && (
-                    <div className="flex-1 p-5 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                      <p className="text-[10px] font-black text-blue-400 uppercase mb-2">조정 이력</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {result.adjustmentHistory.map((h, i) => (
-                          <span key={i} className="text-[10px] font-bold px-2 py-1 bg-blue-500/20 rounded-lg text-blue-300 border border-blue-500/30">{h.reason}</span>
-                        ))}
-                      </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-white p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 mb-2">원 만료일</p>
+                                    <p className="text-xl font-black text-slate-300">{result.originalEnd?.toLocaleDateString()}</p>
+                                </div>
+                                <div className="bg-white p-5 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-blue-500 mb-2">실무 종료일</p>
+                                    <p className="text-xl font-black text-blue-600">{result.adjustedEnd?.toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                  )}
                 </div>
-              </div>
-            </section>
+            );
+        };
 
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div> 원 법정 만료일
-                </h4>
-                <div className="text-2xl font-black text-slate-300">
-                   {result.originalEnd?.toLocaleDateString()}
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                <h4 className="text-[10px] font-black text-blue-500 uppercase mb-3 tracking-widest flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div> 실무 종료 예정일
-                </h4>
-                <div className="text-2xl font-black text-blue-600">
-                   {result.adjustedEnd?.toLocaleDateString()}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6">
-                <BookOpen size={20} className="text-blue-600" /> 인사 실무 비고
-              </h3>
-              <div className="grid md:grid-cols-2 gap-8 text-[11px] text-slate-500 leading-relaxed font-medium">
-                <div className="space-y-4">
-                  <p><span className="font-bold text-slate-800 border-b-2 border-blue-100">계약종료일 조정:</span> 주말 또는 공휴일이 종료일인 경우 직전 평일을 마지막 근로일로 지정하여 퇴사 처리를 진행합니다.</p>
-                  <p><span className="font-bold text-slate-800 border-b-2 border-blue-100">데이터 범위:</span> 본 프로그램은 2050년까지의 음력 및 대체공휴일 로직을 내장하고 있습니다.</p>
-                </div>
-                <div className="space-y-4">
-                  <p><span className="font-bold text-slate-800 border-b-2 border-blue-100">기간제법 제4조:</span> 2년 초과 사용 금지 원칙을 준수해야 하며, 위반 시 무기계약직으로 간주될 수 있습니다.</p>
-                  <a href="https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=228186" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-blue-600 font-black hover:underline mt-2">
-                    기간제법 법령 전문 <ExternalLink size={12} />
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
