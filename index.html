@@ -3,45 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>기간제 계약기간 계산기 (HR 전용)</title>
+    <title>HR 전용: 기간제 계약기간 계산기</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Pretendard', sans-serif; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        // 브라우저 환경에 맞게 리액트 훅 추출
         const { useState, useEffect, useMemo } = React;
 
-        // 아이콘 컴포넌트 (Lucide 아이콘을 리액트에서 쓰기 쉽게 설정)
+        // 아이콘 헬퍼 컴포넌트
         const Icon = ({ name, size = 20, className = "" }) => {
-            const [iconSvg, setIconSvg] = useState("");
-            useEffect(() => {
-                const svg = lucide.createIcons({
-                    icons: { [name]: lucide[name] },
-                    nameAttr: 'data-lucide'
-                });
-            }, [name]);
+            useEffect(() => { if (window.lucide) lucide.createIcons(); }, [name]);
             return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
         };
 
         const App = () => {
+            // 입사일 상태 (입력 편의를 위해 숫자가 아닌 문자열로 관리하여 '0' 문제 해결)
             const [hireDate, setHireDate] = useState({
-                year: new Date().getFullYear(),
-                month: new Date().getMonth() + 1,
-                day: new Date().getDate(),
+                year: String(new Date().getFullYear()),
+                month: String(new Date().getMonth() + 1),
+                day: String(new Date().getDate()),
             });
 
             const [duration, setDuration] = useState({ years: 0, months: 6 });
-            const [result, setResult] = useState({
-                originalEnd: null, adjustedEnd: null, isAdjusted: false,
-                reason: "", isOverTwoYears: false, adjustmentHistory: []
-            });
+            const [result, setResult] = useState(null);
 
+            // 공휴일 데이터
             const FIXED_HOLIDAYS = [
                 { date: "01-01", name: "신정", hasAlt: false },
                 { date: "03-01", name: "삼일절", hasAlt: true },
@@ -53,161 +50,219 @@
                 { date: "12-25", name: "성탄절", hasAlt: true }
             ];
 
-            const LUNAR_HOLIDAYS = useMemo(() => ({
+            const LUNAR_HOLIDAYS = {
                 2024: { seollal: ["02-09", "02-10", "02-11"], buddha: "05-15", chuseok: ["09-16", "09-17", "09-18"] },
                 2025: { seollal: ["01-28", "01-29", "01-30"], buddha: "05-05", chuseok: ["10-05", "10-06", "10-07"] },
                 2026: { seollal: ["02-16", "02-17", "02-18"], buddha: "05-24", chuseok: ["09-24", "09-25", "09-26"] },
-                // ... (중략: 데이터 유지)
-            }), []);
-
-            // 공휴일 계산 로직 (기존 코드 로직 유지)
-            const getFullHolidays = (year) => {
-                const holidays = new Map();
-                FIXED_HOLIDAYS.forEach(h => holidays.set(`${year}-${h.date}`, h.name));
-                const lunar = LUNAR_HOLIDAYS[year];
-                if (lunar) {
-                    lunar.seollal.forEach(d => holidays.set(`${year}-${d}`, "설날 연휴"));
-                    holidays.set(`${year}-${lunar.buddha}`, "부처님오신날");
-                    lunar.chuseok.forEach(d => holidays.set(`${year}-${d}`, "추석 연휴"));
-                }
-                return holidays;
+                2027: { seollal: ["02-06", "02-07", "02-08"], buddha: "05-13", chuseok: ["09-14", "09-15", "09-16"] }
             };
 
             const isHolidayOrWeekend = (date) => {
                 const y = date.getFullYear();
-                const dateStr = `${y}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                const day = date.getDay();
-                const yearHolidays = getFullHolidays(y);
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                const dateStr = `${y}-${m}-${d}`;
+                const day = date.getDay(); // 0:일, 6:토
+
                 if (day === 0) return { check: true, name: "일요일" };
                 if (day === 6) return { check: true, name: "토요일" };
-                if (yearHolidays.has(dateStr)) return { check: true, name: yearHolidays.get(dateStr) };
+                
+                // 고정 공휴일 체크
+                const fixed = FIXED_HOLIDAYS.find(h => h.date === `${m}-${d}`);
+                if (fixed) return { check: true, name: fixed.name };
+
+                // 음력 공휴일 체크
+                const lunar = LUNAR_HOLIDAYS[y];
+                if (lunar) {
+                    if (lunar.seollal.includes(`${m}-${d}`)) return { check: true, name: "설날 연휴" };
+                    if (lunar.chuseok.includes(`${m}-${d}`)) return { check: true, name: "추석 연휴" };
+                    if (lunar.buddha === `${m}-${d}`) return { check: true, name: "부처님오신날" };
+                }
                 return { check: false, name: "" };
             };
 
-            const calculateDates = () => {
+            const calculate = () => {
                 const { year, month, day } = hireDate;
-                const { years, months } = duration;
                 if (!year || !month || !day) return;
 
-                let target = new Date(year, month - 1, day);
-                target.setFullYear(target.getFullYear() + parseInt(years));
-                target.setMonth(target.getMonth() + parseInt(months));
+                // 1. 법정 만료일 계산 (민법 원칙: 전날 종료)
+                let target = new Date(Number(year), Number(month) - 1, Number(day));
+                target.setFullYear(target.getFullYear() + duration.years);
+                target.setMonth(target.getMonth() + duration.months);
                 target.setDate(target.getDate() - 1);
 
                 const originalEnd = new Date(target);
                 let current = new Date(target);
-                let isAdjusted = false;
-                let adjustmentHistory = [];
-                let safety = 0;
+                let history = [];
 
-                while (safety < 21) {
+                // 2. 소정근로일 역산 (휴무일이면 직전 평일로 이동)
+                let safety = 0;
+                while (safety < 15) {
                     const status = isHolidayOrWeekend(current);
                     if (!status.check) break;
-                    isAdjusted = true;
-                    adjustmentHistory.push({ date: new Date(current), reason: status.name });
+                    history.push({ date: new Date(current), name: status.name });
                     current.setDate(current.getDate() - 1);
                     safety++;
                 }
 
                 setResult({
-                    originalEnd, adjustedEnd: current, isAdjusted,
-                    reason: isAdjusted ? "휴무일(공휴일/주말)을 피해 직전 소정근로일로 조정되었습니다." : "소정근로일에 해당하여 조정이 필요하지 않습니다.",
-                    isOverTwoYears: (parseInt(years) * 12 + parseInt(months)) > 24,
-                    adjustmentHistory
+                    original: originalEnd,
+                    adjusted: current,
+                    isChanged: originalEnd.getTime() !== current.getTime(),
+                    history: history,
+                    isOverTwoYears: (duration.years * 12 + duration.months) > 24
                 });
-                
-                setTimeout(() => lucide.createIcons(), 100);
             };
 
-            useEffect(() => { calculateDates(); }, [hireDate, duration]);
+            useEffect(() => { calculate(); }, [hireDate, duration]);
+
+            // 입사일 입력 핸들러 (0 방지)
+            const handleHireDateChange = (key, value) => {
+                setHireDate(prev => ({ ...prev, [key]: value }));
+            };
+
+            const DateCard = ({ date, label, color, subText }) => (
+                <div className={`flex-1 p-6 rounded-2xl border-2 ${color} bg-white shadow-sm relative overflow-hidden`}>
+                    <div className="text-[10px] font-bold uppercase tracking-tighter opacity-50 mb-2">{label}</div>
+                    <div className="text-3xl font-black tracking-tight mb-1">
+                        {date.getFullYear()}.{String(date.getMonth()+1).padStart(2,'0')}.{String(date.getDate()).padStart(2,'0')}
+                    </div>
+                    <div className="text-sm font-bold flex items-center gap-1 opacity-70">
+                        <Icon name="Clock" size={14} />
+                        {['일','월','화','수','목','금','토'][date.getDay()]}요일 {subText && `(${subText})`}
+                    </div>
+                </div>
+            );
 
             return (
-                <div className="min-h-screen bg-slate-50 p-4 md:p-12 font-sans text-slate-900">
-                    <div className="max-w-5xl mx-auto">
-                        <header className="mb-10">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 bg-blue-600 rounded-lg text-white">
-                                    <Icon name="Calculator" size={24} />
-                                </div>
-                                <h1 className="text-3xl font-black text-slate-800 tracking-tight">기간제 계약기간 계산기</h1>
+                <div className="max-w-4xl mx-auto p-6 md:p-12 min-h-screen">
+                    {/* 헤더 */}
+                    <header className="mb-8">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-200">
+                                <Icon name="Calculator" size={28} />
                             </div>
-                            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl">
-                                <Icon name="Settings" size={14} className="text-blue-600" />
-                                <p className="text-xs text-blue-700 font-medium">※ 인사 실무용: 종료일이 주말/공휴일인 경우 직전 평일로 자동 조정합니다.</p>
-                            </div>
-                        </header>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            <div className="lg:col-span-4 space-y-6">
-                                <section className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-                                    <h2 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                        <Icon name="Calendar" size={18} className="text-blue-600" /> 정보 입력
-                                    </h2>
-                                    <div className="space-y-6">
-                                        <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1 tracking-wider">입사일</label>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                <input type="number" value={hireDate.year} onChange={e => setHireDate({...hireDate, year: parseInt(e.target.value)||0})} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-center focus:ring-2 focus:ring-blue-500" />
-                                                <input type="number" value={hireDate.month} onChange={e => setHireDate({...hireDate, month: parseInt(e.target.value)||0})} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-center" />
-                                                <input type="number" value={hireDate.day} onChange={e => setHireDate({...hireDate, day: parseInt(e.target.value)||0})} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-center" />
-                                            </div>
-                                        </div>
-                                        <div className="pt-6 border-t border-slate-50">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block ml-1 tracking-wider">계약 기간</label>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <select value={duration.years} onChange={e => setDuration({...duration, years: parseInt(e.target.value)})} className="w-full p-4 bg-blue-50 border-none rounded-2xl font-bold text-blue-700 focus:outline-none">
-                                                    {[0,1,2,3,4,5].map(y => <option key={y} value={y}>{y}년</option>)}
-                                                </select>
-                                                <select value={duration.months} onChange={e => setDuration({...duration, months: parseInt(e.target.value)})} className="w-full p-4 bg-blue-50 border-none rounded-2xl font-bold text-blue-700 focus:outline-none">
-                                                    {[0,1,2,3,4,5,6,7,8,9,10,11].map(m => <option key={m} value={m}>{m}개월</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-
-                                {result.isOverTwoYears && (
-                                    <div className="bg-amber-50 border border-amber-100 p-5 rounded-3xl flex gap-3 shadow-sm">
-                                        <Icon name="AlertTriangle" size={20} className="text-amber-500 shrink-0" />
-                                        <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
-                                            <strong>기간제법 경고:</strong> 2년 초과 시 무기계약직 전환 대상이 될 수 있습니다.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="lg:col-span-8 space-y-6">
-                                <section className="bg-slate-900 rounded-[2.5rem] p-10 shadow-2xl text-white relative overflow-hidden">
-                                    <div className="relative z-10">
-                                        <div className="flex items-center gap-2 text-blue-400 mb-6 font-black text-[10px] uppercase tracking-[0.2em]">
-                                            <Icon name="CheckCircle2" size={14} /> Final Calculated End Date
-                                        </div>
-                                        <div className="text-5xl md:text-6xl font-black tracking-tighter mb-10 flex flex-wrap items-baseline gap-4">
-                                            {result.adjustedEnd?.getFullYear()}.{String(result.adjustedEnd?.getMonth() + 1).padStart(2, '0')}.{String(result.adjustedEnd?.getDate()).padStart(2, '0')}
-                                            <span className="text-2xl text-slate-500 font-bold">({['일', '월', '화', '수', '목', '금', '토'][result.adjustedEnd?.getDay()]}요일)</span>
-                                        </div>
-                                        <div className="flex flex-col md:flex-row gap-4">
-                                            <div className="flex-1 p-5 bg-white/5 rounded-2xl border border-white/10">
-                                                <p className="text-[10px] font-black text-slate-500 uppercase mb-2">조정 사유</p>
-                                                <p className="text-sm font-bold leading-relaxed">{result.reason}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest flex items-center gap-2">원 법정 만료일</h4>
-                                        <div className="text-2xl font-black text-slate-300">{result.originalEnd?.toLocaleDateString()}</div>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                                        <h4 className="text-[10px] font-black text-blue-500 uppercase mb-3 tracking-widest flex items-center gap-2">실무 종료 예정일</h4>
-                                        <div className="text-2xl font-black text-blue-600">{result.adjustedEnd?.toLocaleDateString()}</div>
-                                    </div>
-                                </div>
+                            <h1 className="text-3xl font-black tracking-tighter text-slate-800">계약기간 계산기</h1>
+                        </div>
+                        
+                        {/* 유의사항 배너 (요청하신 가시성 강화) */}
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl flex items-start gap-3 shadow-sm">
+                            <Icon name="Info" size={18} className="text-blue-600 mt-0.5" />
+                            <div className="text-xs leading-relaxed text-blue-900">
+                                <span className="font-extrabold uppercase">[유지보수 안내]</span> 법 개정으로 공휴일이 신설되면 코드 상단의 
+                                <code className="mx-1 bg-blue-100 px-1.5 py-0.5 rounded font-mono font-bold text-blue-700 underline">FIXED_HOLIDAYS</code>
+                                리스트에 날짜와 명칭을 추가해 주세요. 시스템에 즉시 반영됩니다.
                             </div>
                         </div>
-                    </div>
+                    </header>
+
+                    <main className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                        {/* 왼쪽: 입력창 */}
+                        <div className="md:col-span-4 space-y-6">
+                            <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                                    <Icon name="UserPlus" size={16} /> 기본 정보 입력
+                                </h2>
+                                
+                                <div className="space-y-5">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-500 ml-1 mb-2 block">입사일</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <input type="number" placeholder="YYYY" value={hireDate.year} onChange={e => handleHireDateChange('year', e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold text-center focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none" />
+                                            <input type="number" placeholder="MM" value={hireDate.month} onChange={e => handleHireDateChange('month', e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold text-center outline-none" />
+                                            <input type="number" placeholder="DD" value={hireDate.day} onChange={e => handleHireDateChange('day', e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold text-center outline-none" />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-500 ml-1 mb-2 block">계약 기간</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <select value={duration.years} onChange={e => setDuration(prev => ({...prev, years: Number(e.target.value)}))} className="p-3 bg-blue-50 border-none rounded-xl font-bold text-blue-700 outline-none">
+                                                {[0,1,2,3,4,5].map(y => <option key={y} value={y}>{y}년</option>)}
+                                            </select>
+                                            <select value={duration.months} onChange={e => setDuration(prev => ({...prev, months: Number(e.target.value)}))} className="p-3 bg-blue-50 border-none rounded-xl font-bold text-blue-700 outline-none">
+                                                {[0,1,2,3,4,5,6,7,8,9,10,11].map(m => <option key={m} value={m}>{m}개월</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {result?.isOverTwoYears && (
+                                <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex gap-3 animate-pulse">
+                                    <Icon name="AlertCircle" size={20} className="text-rose-500 shrink-0" />
+                                    <p className="text-[11px] font-bold text-rose-800 leading-tight">주의: 계약 기간이 2년을 초과합니다. 무기직 전환 대상 여부를 확인하세요.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 오른쪽: 결과창 */}
+                        <div className="md:col-span-8 space-y-6">
+                            {result && (
+                                <>
+                                    <section className="space-y-4">
+                                        <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 ml-1">
+                                            <Icon name="Calendar" size={16} /> 종료일 비교 분석
+                                        </h2>
+                                        
+                                        <div className="flex flex-col md:flex-row gap-4 relative">
+                                            {/* 원 계약종료일 */}
+                                            <DateCard 
+                                                date={result.original} 
+                                                label="원 법정 만료일" 
+                                                color="border-slate-200"
+                                                subText={isHolidayOrWeekend(result.original).name}
+                                            />
+
+                                            {/* 화살표 아이콘 (변경 시만 표시) */}
+                                            {result.isChanged && (
+                                                <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-white p-2 rounded-full border border-slate-200 shadow-sm text-blue-600">
+                                                    <Icon name="ArrowRight" />
+                                                </div>
+                                            )}
+
+                                            {/* 변경된 종료일 */}
+                                            <DateCard 
+                                                date={result.adjusted} 
+                                                label="실무 종료 예정일" 
+                                                color={result.isChanged ? "border-blue-600 ring-4 ring-blue-50" : "border-slate-200"}
+                                                subText="소정근로일"
+                                            />
+                                        </div>
+                                    </section>
+
+                                    {/* 사유 설명 섹션 */}
+                                    <section className={`p-6 rounded-[2rem] ${result.isChanged ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <Icon name={result.isChanged ? "AlertTriangle" : "CheckCircle"} className={result.isChanged ? "text-amber-400" : "text-slate-400"} />
+                                            <h3 className="font-bold">계약 종료일 조정 분석</h3>
+                                        </div>
+                                        <p className="text-sm leading-relaxed opacity-80 mb-4 font-medium">
+                                            {result.isChanged 
+                                                ? `법정 만료일(${result.original.toLocaleDateString()})이 ${result.history.map(h => h.name).join(', ')}에 해당합니다. 행정 공백 방지를 위해 직전 소정근로일로 조정되었습니다.`
+                                                : `법정 만료일이 평일(소정근로일)이므로 별도의 날짜 조정이 필요하지 않습니다.`
+                                            }
+                                        </p>
+                                        
+                                        {result.isChanged && (
+                                            <div className="flex flex-wrap gap-2 pt-4 border-t border-white/10">
+                                                {result.history.map((h, i) => (
+                                                    <span key={i} className="text-[10px] bg-white/10 px-2 py-1 rounded-lg border border-white/20">
+                                                        {h.date.getDate()}일({h.name}) 건너뜀
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </section>
+                                    
+                                    <div className="pt-4 flex justify-between items-center text-[11px] text-slate-400 font-bold px-2">
+                                        <div className="flex items-center gap-1"><Icon name="BookOpen" size={12} /> 관련 법령: 기간제법 제4조</div>
+                                        <a href="https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=228186" target="_blank" className="hover:text-blue-600 underline">법령 전문 보기</a>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </main>
                 </div>
             );
         };
@@ -217,4 +272,3 @@
     </script>
 </body>
 </html>
-
